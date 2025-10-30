@@ -51,7 +51,7 @@
     </div>
 
   <!-- Link that opens page2.html in the same tab -->
-  <a href="page2.html">Przejdź do natępnej strony :3 (same tab)</a>
+  <a href="page2.html">Przejdź do natępnej strony :3 </a>
 
   
   </body>
