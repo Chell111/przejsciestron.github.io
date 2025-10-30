@@ -2,8 +2,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Example: Link to another page</title>
- <h1>Wielka Trójka</h1>
-  <style>
+<style>
         body {
             font-family: Arial, sans-serif;
             margin: 20px;
