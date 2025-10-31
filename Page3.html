@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Simple Vote + Comment (DevTools-only Results)</title>
+  <title>Shared Vote + Comment (Realtime)</title>
   <style>
     :root{ --bg:#f6f8fb; --card:#fff; --accent:#2563eb; --muted:#6b7280; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;background:var(--bg)}
     .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{width:100%;max-width:600px;background:var(--card);padding:18px;border-radius:10px;box-shadow:0 8px 30px rgba(15,23,42,0.06)}
+    .card{width:100%;max-width:640px;background:var(--card);padding:18px;border-radius:10px;box-shadow:0 8px 30px rgba(15,23,42,0.06)}
     h1{margin:0 0 8px;font-size:1.2rem}
     p.lead{margin:0 0 12px;color:var(--muted)}
     form{display:flex;flex-direction:column;gap:10px}
@@ -24,24 +24,20 @@
     .result-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0}
     .small{font-size:0.9rem;padding:8px 10px}
     .meta{color:var(--muted);font-size:0.9rem}
+    .note{font-size:.9rem;color:var(--muted);margin-top:8px}
+    .warn{background:#fff4f0;border:1px solid #ffd6c7;color:#6a2e00;padding:8px;border-radius:8px;margin-top:8px}
     pre{background:#0b1220;color:#dbeafe;padding:10px;border-radius:6px;overflow:auto;font-size:0.85rem}
-    .dev-hint{
-      margin-top:12px;
-      padding:10px;
-      border-radius:8px;
-      background:#fff8dc;
-      border:1px solid #ffe6a1;
-      color:#665200;
-      font-size:.95rem;
-    }
     @media (max-width:520px){ .card{padding:14px} }
   </style>
 </head>
 <body>
   <div class="wrap">
     <main class="card" role="main" aria-labelledby="title">
-      <h1 id="title">Quick Vote</h1>
-      <p class="lead">Choose one option and (optionally) add a short comment. Votes are saved locally in your browser — results are visible only when your browser's developer tools are open.</p>
+      <h1 id="title">Shared Quick Vote</h1>
+      <p class="lead">Choose one option and optionally add a short comment. Votes are stored in a shared Realtime database so you'll see others' votes too.</p>
+
+      <!-- If Firebase isn't configured you'll fallback to localStorage (no sharing). -->
+      <div id="configNotice" class="warn" style="display:none"></div>
 
       <form id="pollForm" autocomplete="off">
         <div class="options" id="optionsList" role="radiogroup" aria-label="Voting options">
@@ -58,14 +54,9 @@
         </div>
       </form>
 
-      <!-- Hint shown on page when DevTools are closed -->
-      <div id="devHint" class="dev-hint" role="status" aria-live="polite" style="display:none">
-        Developer tools are closed — open DevTools (F12 / Ctrl+Shift+I / Cmd+Opt+I) to view results.
-      </div>
-
-      <section id="results" class="results" aria-live="polite" style="display:none">
+      <section id="results" class="results" aria-live="polite">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <strong>Results</strong>
+          <strong>Results (live)</strong>
           <span class="meta" id="totalVotes">0 votes</span>
         </div>
         <div id="resultsList" style="margin-top:8px"></div>
@@ -75,258 +66,264 @@
           <div id="commentsList" style="margin-top:6px"></div>
         </div>
       </section>
+
+      <div class="note">
+        Notes: To enable real-time sharing across devices you must configure Firebase Realtime Database (instructions below). If you don't configure it, votes will still work locally only.
+      </div>
     </main>
   </div>
 
-  <script>
-    (function () {
-      // Simple vote + comment widget with "DevTools-only results"
-      const STORAGE_KEY = 'simple.vote.v1';
+  <!-- Firebase v9 modular is used via CDN. We use a <script type="module"> below. -->
+  <script type="module">
+    /**
+     * HOW TO ENABLE REALTIME SHARING (quick steps)
+     * 1) Go to https://console.firebase.google.com and create a project (free).
+     * 2) In Project settings > General, register a web app and copy the firebaseConfig object.
+     * 3) In the Firebase console enable Realtime Database and set rules for testing:
+     *      { "rules": { ".read": true, ".write": true } }
+     *    (for production use secure rules / authentication!)
+     * 4) Replace the firebaseConfig below with your actual config object.
+     *
+     * If you prefer to self-host, I can provide a Node.js + Socket.IO example instead.
+     */
 
-      // Customize options here:
-      const OPTIONS = [
-        { id: 'opt-a', label: 'Option A' },
-        { id: 'opt-b', label: 'Option B' },
-        { id: 'opt-c', label: 'Option C' }
-      ];
+    // ---------- PASTE YOUR FIREBASE CONFIG HERE ----------
+    // Replace the placeholders below with the config object from your Firebase project.
+    // If you leave the config as the default placeholder, the page will fall back to localStorage only.
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "SENDER_ID",
+      appId: "APP_ID"
+    };
+    // ----------------------------------------------------
 
-      // DOM
-      const optionsList = document.getElementById('optionsList');
-      const form = document.getElementById('pollForm');
-      const commentEl = document.getElementById('comment');
-      const resultsList = document.getElementById('resultsList');
-      const commentsList = document.getElementById('commentsList');
-      const totalVotesEl = document.getElementById('totalVotes');
-      const exportBtn = document.getElementById('exportBtn');
-      const clearBtn = document.getElementById('clearBtn');
-      const resultsSection = document.getElementById('results');
-      const devHint = document.getElementById('devHint');
+    // OPTIONS: edit labels or add/remove options here
+    const OPTIONS = [
+      { id: 'opt-a', label: 'Option A' },
+      { id: 'opt-b', label: 'Option B' },
+      { id: 'opt-c', label: 'Option C' }
+    ];
 
-      // Storage helpers
-      function load() {
-        try {
-          const raw = localStorage.getItem(STORAGE_KEY);
-          return raw ? JSON.parse(raw) : { votes: [] };
-        } catch (e) {
-          console.error('load error', e);
-          return { votes: [] };
-        }
+    // DOM
+    const optionsList = document.getElementById('optionsList');
+    const form = document.getElementById('pollForm');
+    const commentEl = document.getElementById('comment');
+    const resultsList = document.getElementById('resultsList');
+    const commentsList = document.getElementById('commentsList');
+    const totalVotesEl = document.getElementById('totalVotes');
+    const exportBtn = document.getElementById('exportBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const configNotice = document.getElementById('configNotice');
+
+    // Simple local-storage fallback
+    const LOCAL_KEY = 'simple.vote.v1';
+
+    // Utility
+    function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    // render radio options
+    function renderOptions(){
+      optionsList.innerHTML = '';
+      for(const opt of OPTIONS){
+        const wrap = document.createElement('label');
+        wrap.className = 'option';
+        wrap.innerHTML = `
+          <input type="radio" name="choice" value="${escapeHtml(opt.id)}" />
+          <div><div style="font-weight:600">${escapeHtml(opt.label)}</div></div>
+        `;
+        optionsList.appendChild(wrap);
       }
-      function save(data) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    // ---------- FIREBASE INTEGRATION (optional) ----------
+    let usingFirebase = false;
+    let db = null;
+    let votesRef = null;
+    try {
+      const isPlaceholder = !firebaseConfig || firebaseConfig.apiKey === "YOUR_API_KEY" || firebaseConfig.databaseURL === "https://YOU" || firebaseConfig.apiKey === undefined;
+      if (!isPlaceholder) {
+        // Load firebase modules dynamically (CDN)
+        const { initializeApp } = await import('https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js');
+        const { getDatabase, ref, push, onValue, remove } = await import('https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js');
+
+        const app = initializeApp(firebaseConfig);
+        db = getDatabase(app);
+        votesRef = ref(db, 'votes'); // all votes stored under /votes
+
+        // Subscribe to live updates
+        onValue(votesRef, (snap) => {
+          const data = snap.val() || {};
+          // Transform object-of-objects -> array
+          const votes = Object.keys(data).map(k => data[k]).sort((a,b) => b.ts - a.ts);
+          renderFromVotes(votes);
+        });
+
+        usingFirebase = true;
+        configNotice.style.display = 'none';
+      } else {
+        usingFirebase = false;
+        configNotice.style.display = '';
+        configNotice.textContent = 'Firebase is not configured — falling back to localStorage (votes will NOT be shared). Follow the comments at top of the file to enable Firebase.';
+      }
+    } catch (err) {
+      console.error('Firebase init error', err);
+      usingFirebase = false;
+      configNotice.style.display = '';
+      configNotice.textContent = 'Failed to initialize Firebase — falling back to localStorage. Check console for details.';
+    }
+
+    // ---------- SHARED FUNCTIONS ----------
+    function renderFromVotes(votesArray) {
+      // votesArray is recent-first
+      const counts = {};
+      const latestComments = {};
+      for(const o of OPTIONS){ counts[o.id] = 0; latestComments[o.id] = []; }
+      for(const v of votesArray){
+        if (!counts.hasOwnProperty(v.choice)) continue;
+        counts[v.choice]++;
+        if (v.comment && v.comment.trim()) latestComments[v.choice].push({ text: v.comment.trim(), ts: v.ts });
       }
 
-      // Render radio options
-      function renderOptions() {
-        optionsList.innerHTML = '';
-        for (const opt of OPTIONS) {
-          const wrap = document.createElement('label');
-          wrap.className = 'option';
-          wrap.innerHTML = `
-            <input type="radio" name="choice" value="${escapeHtml(opt.id)}" />
-            <div>
-              <div style="font-weight:600">${escapeHtml(opt.label)}</div>
-            </div>
-          `;
-          optionsList.appendChild(wrap);
-        }
+      // Update UI counts
+      resultsList.innerHTML = '';
+      for(const opt of OPTIONS){
+        const row = document.createElement('div');
+        row.className = 'result-row';
+        row.innerHTML = `<div>${escapeHtml(opt.label)}</div><div class="meta">${counts[opt.id]}</div>`;
+        resultsList.appendChild(row);
       }
 
-      // Utility: escape HTML for text content
-      function escapeHtml(s) {
-        return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-      }
+      // total
+      totalVotesEl.textContent = votesArray.length + (votesArray.length === 1 ? ' vote' : ' votes');
 
-      // Add a vote
-      function addVote(choiceId, comment) {
-        const state = load();
-        state.votes.unshift({ choice: choiceId, comment: comment || '', ts: Date.now() });
-        save(state);
-        // If devtools are open, immediately refresh visible results
-        if (isDevToolsOpen) renderResults();
-      }
-
-      // Compute counts and latest comments
-      function computeSummary() {
-        const state = load();
-        const counts = {};
-        const latestComments = {};
-        for (const o of OPTIONS) { counts[o.id] = 0; latestComments[o.id] = []; }
-        for (const v of state.votes) {
-          if (!counts.hasOwnProperty(v.choice)) continue;
-          counts[v.choice]++;
-          if (v.comment && v.comment.trim()) {
-            latestComments[v.choice].push({ text: v.comment.trim(), ts: v.ts });
+      // latest comments
+      commentsList.innerHTML = '';
+      for(const opt of OPTIONS){
+        const header = document.createElement('div');
+        header.style.marginTop = '8px';
+        header.innerHTML = `<strong>${escapeHtml(opt.label)}</strong>`;
+        commentsList.appendChild(header);
+        const items = latestComments[opt.id].slice(0,5);
+        if (items.length === 0){
+          const empty = document.createElement('div');
+          empty.className = 'meta';
+          empty.textContent = '— no comments';
+          commentsList.appendChild(empty);
+        } else {
+          for(const it of items){
+            const d = new Date(it.ts);
+            const div = document.createElement('div');
+            div.style.marginTop = '6px';
+            div.innerHTML = `<div style="font-size:.95rem">${escapeHtml(it.text)}</div><div class="meta" style="font-size:.8rem">${d.toLocaleString()}</div>`;
+            commentsList.appendChild(div);
           }
         }
-        return { counts, latestComments, total: state.votes.length };
       }
+    }
 
-      // Render results area
-      function renderResults() {
-        const summary = computeSummary();
-        resultsList.innerHTML = '';
-        commentsList.innerHTML = '';
-        totalVotesEl.textContent = summary.total + (summary.total === 1 ? ' vote' : ' votes');
+    // Local fallback functions
+    function loadLocal() {
+      try {
+        const raw = localStorage.getItem(LOCAL_KEY);
+        return raw ? JSON.parse(raw) : { votes: [] };
+      } catch (e) { return { votes: [] }; }
+    }
+    function saveLocal(obj) { localStorage.setItem(LOCAL_KEY, JSON.stringify(obj)); }
 
-        for (const opt of OPTIONS) {
-          const row = document.createElement('div');
-          row.className = 'result-row';
-          row.innerHTML = `<div>${escapeHtml(opt.label)}</div><div class="meta">${summary.counts[opt.id]}</div>`;
-          resultsList.appendChild(row);
-        }
+    // If not using Firebase, render from local storage initially
+    if (!usingFirebase) {
+      renderFromVotes(loadLocal().votes);
+    }
 
-        for (const opt of OPTIONS) {
-          const header = document.createElement('div');
-          header.style.marginTop = '8px';
-          header.innerHTML = `<strong>${escapeHtml(opt.label)}</strong>`;
-          commentsList.appendChild(header);
+    // Submit handler: push to Firebase if configured, else to localStorage
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      const choice = formData.get('choice');
+      const comment = (commentEl.value || '').trim();
+      if (!choice) return alert('Please select an option before voting.');
 
-          const items = summary.latestComments[opt.id].slice(0,5);
-          if (items.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'meta';
-            empty.textContent = '— no comments';
-            commentsList.appendChild(empty);
-          } else {
-            for (const it of items) {
-              const d = new Date(it.ts);
-              const div = document.createElement('div');
-              div.style.marginTop = '6px';
-              div.innerHTML = `<div style="font-size:.95rem">${escapeHtml(it.text)}</div><div class="meta" style="font-size:.8rem">${d.toLocaleString()}</div>`;
-              commentsList.appendChild(div);
-            }
-          }
-        }
-      }
+      const voteObj = { choice, comment, ts: Date.now() };
 
-      // Export to file
-      function exportJSON() {
-        const data = load();
-        if (!data.votes || data.votes.length === 0) return alert('No votes to export.');
-        const blob = new Blob([JSON.stringify(data.votes, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'votes.json';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      }
-
-      // Clear storage
-      function clearAll() {
-        if (!confirm('Clear all saved votes? This cannot be undone.')) return;
-        localStorage.removeItem(STORAGE_KEY);
-        renderResults();
-      }
-
-      // Form submit handler
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const formData = new FormData(form);
-        const choice = formData.get('choice');
-        const comment = (commentEl.value || '').trim();
-        if (!choice) {
-          return alert('Please select an option before voting.');
-        }
-        addVote(choice, comment);
-        form.reset();
-        commentEl.value = '';
-        commentEl.focus();
-      });
-
-      exportBtn.addEventListener('click', exportJSON);
-      clearBtn.addEventListener('click', clearAll);
-
-      // --- DevTools detection logic ---
-      // We'll use multiple heuristics to detect if DevTools is open:
-      //  1) Difference between outer and inner window dimensions (common sign)
-      //  2) Console getter trick: console will read properties when DevTools console is open
-      // Combined checks are poll-based and update UI on change.
-      let isDevToolsOpen = false;
-      function setDevToolsState(open) {
-        if (open === isDevToolsOpen) return;
-        isDevToolsOpen = !!open;
-        // Show/hide the visible results section and hint
-        resultsSection.style.display = isDevToolsOpen ? '' : 'none';
-        devHint.style.display = isDevToolsOpen ? 'none' : '';
-        if (isDevToolsOpen) {
-          renderResults();
-          // also print a handy summary to the console for quick inspection
-          try {
-            const data = load().votes || [];
-            console.groupCollapsed('Votes (most recent first) — printed because DevTools is open');
-            console.log('Total votes:', data.length);
-            console.table(data.slice(0, 50).map(v => ({ choice: v.choice, comment: v.comment, time: new Date(v.ts).toLocaleString() })));
-            console.groupEnd();
-          } catch (e) { /* ignore */ }
-        }
-      }
-
-      // Heuristic A: size difference
-      function sizeDiffOpen() {
-        const threshold = 160; // pixels, typical threshold used in many libs
+      if (usingFirebase && votesRef) {
+        // push to realtime DB
         try {
-          return (window.outerWidth - window.innerWidth) > threshold || (window.outerHeight - window.innerHeight) > threshold;
-        } catch (e) {
-          return false;
+          const { push } = await import('https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js');
+          await push(votesRef, voteObj);
+          // UI will update when onValue fires
+        } catch (err) {
+          console.error('Failed to push vote to Firebase', err);
+          alert('Failed to send vote to server. Falling back to local storage.');
+          const s = loadLocal(); s.votes.unshift(voteObj); saveLocal(s); renderFromVotes(s.votes);
         }
+      } else {
+        const s = loadLocal();
+        s.votes.unshift(voteObj);
+        saveLocal(s);
+        renderFromVotes(s.votes);
       }
 
-      // Heuristic B: console getter trick (fires when console inspects the object)
-      let consoleGetterFired = false;
-      function setupConsoleDetector() {
-        consoleGetterFired = false;
+      form.reset();
+      commentEl.value = '';
+      commentEl.focus();
+    });
+
+    // Export JSON (current stored votes)
+    exportBtn.addEventListener('click', async () => {
+      let votes = [];
+      if (usingFirebase && votesRef) {
+        // read snapshot once
         try {
-          const img = new Image();
-          Object.defineProperty(img, 'id', {
-            get: function () {
-              consoleGetterFired = true;
-              // return something harmless
-              return 'devtools-detected';
-            }
-          });
-          // When DevTools console is open, logging this object usually triggers the getter
-          console.log('%c', img);
-        } catch (e) {
-          // ignore any errors in exotic environments
-          consoleGetterFired = false;
+          const { get } = await import('https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js');
+          const snapshot = await get(votesRef);
+          const data = snapshot.val() || {};
+          votes = Object.keys(data).map(k => data[k]).sort((a,b) => b.ts - a.ts);
+        } catch (err) {
+          console.error('Failed to read from Firebase', err);
+          votes = loadLocal().votes;
         }
+      } else {
+        votes = loadLocal().votes;
       }
 
-      // Polling loop
-      let lastCheck = 0;
-      function checkDevTools() {
-        // Run console detector on each check so getter runs if console open
-        setupConsoleDetector();
-        const sizeOpen = sizeDiffOpen();
-        const open = sizeOpen || consoleGetterFired;
-        setDevToolsState(open);
-        lastCheck = Date.now();
+      if (!votes || votes.length === 0) return alert('No votes to export.');
+      const blob = new Blob([JSON.stringify(votes, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'votes.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    // Clear all votes (removes from Firebase if configured, else local)
+    clearBtn.addEventListener('click', async () => {
+      if (!confirm('Clear all saved votes? This cannot be undone.')) return;
+      if (usingFirebase && votesRef) {
+        try {
+          const { remove } = await import('https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js');
+          await remove(votesRef);
+          // onValue callback will update UI
+        } catch (err) {
+          console.error('Failed to clear votes in Firebase', err);
+          alert('Failed to clear remote votes. Clearing local copy instead.');
+          localStorage.removeItem(LOCAL_KEY);
+          renderFromVotes([]);
+        }
+      } else {
+        localStorage.removeItem(LOCAL_KEY);
+        renderFromVotes([]);
       }
+    });
 
-      // Initial render state (hide results until detection runs)
-      resultsSection.style.display = 'none';
-      devHint.style.display = '';
+    // Initialize UI
+    renderOptions();
+    // If usingFirebase, onValue already keeps UI updated. If not, we already rendered local votes above.
 
-      // Start polling every 700ms
-      checkDevTools();
-      const interval = setInterval(checkDevTools, 700);
-
-      // also check on resize (quick response when DevTools opens docked)
-      window.addEventListener('resize', checkDevTools);
-
-      // cleanup if page is unloaded
-      window.addEventListener('beforeunload', () => {
-        clearInterval(interval);
-      });
-
-      // Init UI
-      renderOptions();
-      // don't render results until DevTools is detected (they're intentionally hidden)
-    })();
   </script>
 </body>
 </html>
