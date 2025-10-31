@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="pl">
 <head>
   <meta charset="utf-8" />
@@ -7,15 +8,17 @@
     /* Reset and ensure page fills viewport */
     html, body { height: 100%; margin: 0; }
 
-    /* Option A: CSS background on the <body> */
+    /* Option A: CSS background on the <main> */
     .bg-css {
-      min-height: 100%;
-      /* Replace with your image path or full URL */
-      background-image: url("https://raw.githubusercontent.com/Chell111/przejsciestron.github.io/refs/heads/main/images/IMG_6577.jpeg");
+      min-height: 100vh; /* ensure it fills the viewport */
+      /* Use a relative path (images/IMG_6577.jpeg) or a correct raw GitHub URL:
+         https://raw.githubusercontent.com/Chell111/przejsciestron.github.io/main/images/IMG_6577.jpeg
+      */
+      background-image: url("images/IMG_6577.jpeg");
       background-size: cover;          /* cover the whole area */
-      background-position: center;     /* center the image */
+      background-position: center center;     /* center the image */
       background-repeat: no-repeat;
-      background-attachment: fixed;    /* optional: fixed during scroll */
+      background-attachment: fixed;    /* OPTIONAL: remove or change on mobile */
       /* fallback background color while image loads */
       background-color: #222;
       color: white;
@@ -26,13 +29,16 @@
       padding: 2rem;
     }
 
-    /* Content styling for both examples */
+    /* Content styling */
     .content {
       position: relative;
       z-index: 1;
       max-width: 900px;
       margin: 2rem;
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: rgba(0,0,0,0.25); /* optional translucent panel for readability */
+      padding: 1rem 1.25rem;
+      border-radius: 8px;
     }
 
     h1 { margin: 0 0 0.5rem 0; font-size: clamp(1.5rem, 3vw, 2.4rem); }
@@ -40,32 +46,26 @@
 
     /* Small-screen adjustments */
     @media (max-width: 520px) {
-      .content { margin: 1rem; }
+      .content { margin: 1rem; padding: 0.75rem; }
+      /* Mobile: don't use background-attachment:fixed (performance and support issues) */
+      .bg-css {
+        background-attachment: scroll;
+        /* shift the focal point if needed so the important part isn't cropped */
+        background-position: center top;
+        padding: 1.5rem;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>strona ze zdjęciem w tle</h1></h1>
-  <p><a href="page2.html">do poprzedniej strony</a></p>
-  <!-- Example A: apply background via CSS on the body -->
   <main class="bg-css" aria-label="Background image using CSS">
     <div class="content" role="article">
-      <h1>Background via CSS</h1>
-      <p>This uses background-image on the page with background-size: cover. Replace "your-photo.jpg" in the CSS with your image.</p>
+      <h1>strona ze zdjęciem w tle</h1>
+      <p><a href="page2.html">do poprzedniej strony</a></p>
+
+      <h2>Background via CSS</h2>
+      <p>This uses background-image on the page with background-size: cover. Replace the URL in the CSS with your image (or a properly formed raw.githubusercontent.net URL). If you want precise control of the crop on different devices, consider using an absolutely positioned &lt;img&gt; with object-fit:cover and srcset/picture.</p>
     </div>
   </main>
-
-  <!-- Example B: Use a full-screen <img> with object-fit (uncomment to test) -->
-  <!--
-  <section class="bg-img-wrap" aria-label="Background image using &lt;img&gt;">
-    <img class="bg-img" src="your-photo.jpg" alt="" aria-hidden="true" />
-    <div class="overlay" aria-hidden="true"></div>
-    <div class="content">
-      <h1>Background via &lt;img&gt;</h1>
-      <p>This uses an absolutely positioned &lt;img&gt; with object-fit: cover. The alt is empty because it's decorative; if it's meaningful, provide descriptive alt text instead.</p>
-    </div>
-  </section>
-  -->
-
 </body>
 </html>
