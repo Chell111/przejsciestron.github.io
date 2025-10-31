@@ -1,3 +1,4 @@
+<!doctype html>
 <html lang="pl">
 <head>
   <meta charset="utf-8" />
@@ -52,11 +53,14 @@
 
         <div class="row" style="margin-top:6px">
           <button type="submit">Vote</button>
+          <button id="exportBtn" type="button" class="secondary small">Export JSON</button>
+          <button id="clearBtn" type="button" class="secondary small">Clear all</button>
         </div>
       </form>
 
       <!-- Hint shown on page when DevTools are closed -->
       <div id="devHint" class="dev-hint" role="status" aria-live="polite" style="display:none">
+        Developer tools are closed — open DevTools (F12 / Ctrl+Shift+I / Cmd+Opt+I) to view results.
       </div>
 
       <section id="results" class="results" aria-live="polite" style="display:none">
@@ -73,7 +77,7 @@
       </section>
     </main>
   </div>
-<p><a href="page2.html">Wróć do zwierzaków</a></p>
+
   <script>
     (function () {
       // Simple vote + comment widget with "DevTools-only results"
